@@ -11,10 +11,10 @@ import xml.dom.minidom as xmlparse
 class Youdao(object):
     def __init__(self):
         self._translator_info = {
-            'words': '',     #关键字
-            'trans': '',     #译文
-            'others': '',    #其他译文
-            'soundmark' : '' #音标
+            'words'     : '', #关键字
+            'trans'     : '', #译文
+            'others'    : '', #其他译文
+            'soundmark' : ''  #音标
         }
 
     def auto_translate(self, words):
@@ -40,9 +40,18 @@ class Youdao(object):
     def http_request(self, words):
         url    = 'http://dict.youdao.com/search'
         params = {
-            'keyfrom' : 'deskdict.mini', 'q' : words, 'doctype' : 'xml', 'xmlVersion' : 8.2,
-            'client' : 'deskdict', 'id' : 'fef0101011fbaf8c', 'vendor': 'unknown', 
-            'in' : 'YoudaoDict', 'appVer' : '5.4.46.5554', 'appZengqiang' : 0, 'le' : 'eng', 'LTH' : 140
+            'q'            : words,
+            'keyfrom'      : 'deskdict.mini',
+            'client'       : 'deskdict',
+            'id'           : 'fef0101011fbaf8c',
+            'vendor'       : 'unknown',
+            'in'           : 'YoudaoDict',
+            'appVer'       : '5.4.46.5554',
+            'le'           : 'eng',
+            'doctype'      : 'xml',
+            'xmlVersion'   : 8.2,
+            'appZengqiang' : 0,
+            'LTH'          : 140
         }
 
         url = '%s?%s' % (url, urlparse.urlencode(params))
@@ -61,6 +70,7 @@ class Youdao(object):
             return ''
         if not nodes[0].firstChild:
             return ''
+        
         return nodes[0].firstChild.wholeText
 
     def parser_trans(self, node):
@@ -115,6 +125,7 @@ class Youdao(object):
             strs += ' 美[%s]' % usphone
         if phone: 
             strs += ' [%s]' % phone
+        
         return strs
 
 
@@ -122,6 +133,7 @@ class TranslateThread(threading.Thread):
     def __init__(self, words, view):
         self.view  = view
         self.words = words
+
         threading.Thread.__init__(self)
 
     def run(self, edit):
@@ -145,4 +157,5 @@ class TranslatorCommand(sublime_plugin.TextCommand):
         if region.begin() != region.end():
             words  = self.view.substr(region)
             thread = TranslateThread(words, self.view)
+            
             thread.run(edit)
