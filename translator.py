@@ -1,139 +1,148 @@
 #!/usr/bin/python
 #-*- encoding: utf-8 -*-
 
-
 import sublime
 import sublime_plugin
 import threading
 import urllib.request as request
 import urllib.parse  as urlparse
-from xml.dom.minidom import parseString
-
-
-class TrsInfo(object):
-    word      = ""
-    trans     = ""
-    web_trans = ""
-    phonetic  = ""
-
+import xml.dom.minidom as xmlparse
 
 class Youdao(object):
-
     def __init__(self):
-        self._trs_info = TrsInfo()
-
-    def _init_trs(self):
-        self._trs_info.word      = ""
-        self._trs_info.trans     = "没有找到相关的汉英互译结果。"
-        self._trs_info.web_trans = ""
-        self._trs_info.phonetic  = ""
+        self._translator_info = {
+            'words': '',     #关键字
+            'trans': '',     #译文
+            'others': '',    #其他译文
+            'soundmark' : '' #音标
+        }
 
     def auto_translate(self, words):
-        self._init_trs()
-        self._trs_info.word = words
-        url  = "http://dict.youdao.com/search"
-        data = {"keyfrom" : "deskdict.mini", "q" : words, "doctype" : "xml", "xmlVersion" : 8.2,
-        "client" : "deskdict", "id" : "fef0101011fbaf8c", "vendor": "unknown", 
-        "in" : "YoudaoDict", "appVer" : "5.4.46.5554", "appZengqiang" : 0, "le" : "eng", "LTH" : 140}
+        result = self.http_request(words)
+        if not result:
+            self._translator_info['words'] = '网络请求失败！'
+            return self._translator_info
 
-        url = "%s?%s" % (url, urlparse.urlencode(data));
+        trans     = self.parser_trans(result)
+        others    = self.parser_others(result)
+        soundmark = self.parser_soundmark(result)
+        if not trans and not others and not soundmark:
+            self._translator_info['words'] = '没有相关汉英互译结果!'
+            return self._translator_info
+
+        self._translator_info['words']     = words
+        self._translator_info['trans']     = trans
+        self._translator_info['others']    = others
+        self._translator_info['soundmark'] = soundmark
+
+        return self._translator_info
+
+    def http_request(self, words):
+        url    = 'http://dict.youdao.com/search'
+        params = {
+            'keyfrom' : 'deskdict.mini', 'q' : words, 'doctype' : 'xml', 'xmlVersion' : 8.2,
+            'client' : 'deskdict', 'id' : 'fef0101011fbaf8c', 'vendor': 'unknown', 
+            'in' : 'YoudaoDict', 'appVer' : '5.4.46.5554', 'appZengqiang' : 0, 'le' : 'eng', 'LTH' : 140
+        }
+
+        url = '%s?%s' % (url, urlparse.urlencode(params))
         req = request.Request(url)
         req.add_header('User-Agent','Youdao Desktop Dict (Windows 6.1.7601)')
-        sublime.status_message(url)
+       
         try:
-            ret = request.urlopen(req, timeout=10).read()
+            result = request.urlopen(req, timeout = 10).read()
+            return xmlparse.parseString(result)
         except Exception as e:
-            sublime.status_message(e)
-            return self._trs_info
-        
-        dom = parseString(ret)
-
-        self._trs_info.trans     = self.parser_trans(dom)
-        self._trs_info.web_trans = self.parser_web_trans(dom)
-        self._trs_info.phonetic  = self.parse_phonetic(dom)
-        return self._trs_info
-
-    def parser_trans(self, node):
-        nodes = node.getElementsByTagName("simple-dict")
-        if not nodes:
-            return ""
-
-        tr_nodes = nodes[0].getElementsByTagName("tr")
-        if not tr_nodes:
-            return ""
-
-        strs = ""
-        for tr in tr_nodes:
-            i_nodes = tr.getElementsByTagName("i")
-            if i_nodes:
-                word = ''.join([i.firstChild.wholeText for i in i_nodes if i.firstChild])
-                word = "<a style=\"text-decoration:none;\" href=\""+word+"\" >"+word+"</a>" + "<br>";
-                strs += word
-
-        return strs
-
-    def parser_web_trans(self, node):
-        nodes = node.getElementsByTagName("web-translation")
-        if not nodes:
-            return ""  
-
-        value_nodes = nodes[0].getElementsByTagName("value")
-        if not value_nodes:
-            return ""
-
-        strs = ""
-        for value in value_nodes:
-            if value.firstChild:
-                word = "<a style=\"text-decoration:none;\" href=\""+value.firstChild.wholeText+"\" >"+value.firstChild.wholeText+"</a>" + "<br>";
-                strs += word
-
-        return strs
+            return ''
 
     def get_node_text(self, node, tag):
         nodes = node.getElementsByTagName(tag)
         if not nodes:
-            return ""
+            return ''
         if not nodes[0].firstChild:
-            return ""
+            return ''
         return nodes[0].firstChild.wholeText
 
-    def parse_phonetic(self, node):
-        phonetics = ""
-        ukphone = self.get_node_text(node, "ukphone")
-        if ukphone: phonetics  += "英[%s] " % ukphone
-        usphone = self.get_node_text(node, "usphone")
-        if usphone: phonetics += "美[%s]" % usphone
-        phone = self.get_node_text(node, "phone")
-        if phone: phonetics += "[%s]" % phone
-        return phonetics
+    def parser_trans(self, node):
+        nodes = node.getElementsByTagName('simple-dict')
+        if not nodes:
+            strs = self.get_node_text(node, 'tran')
+            if not strs:
+                return ''
+            return '<a style=\"text-decoration:none;\" href=\"' + strs + '\" >' + strs + '</a><br>'
 
-        
-class TranslatorCommand(sublime_plugin.TextCommand):
+        tr_nodes = nodes[0].getElementsByTagName('tr')
+        if not tr_nodes:
+            return ''
 
-    def run(self, edit):
-        region = self.view.sel()[0]
-        if region.begin() != region.end():
-            word = self.view.substr(region)
-            thread = translate_comment(word, self.view)
-            thread.run(edit)
-        else:
-            sublime.status_message('must be a word')
+        strs = ''
+        for tr in tr_nodes:
+            i_nodes = tr.getElementsByTagName('i')
+            if i_nodes:
+                word = ''.join([i.firstChild.wholeText for i in i_nodes if i.firstChild])
+                html = '<a style=\"text-decoration:none;\" href=\"' + word + '\" >' + word + '</a><br>'
+                strs += html
+
+        return strs
+
+    def parser_others(self, node):
+        nodes = node.getElementsByTagName('web-translation')
+        if not nodes:
+            return ''
+
+        value_nodes = nodes[0].getElementsByTagName('value')
+        if not value_nodes:
+            return ''
+
+        strs = ''
+        for value in value_nodes:
+            if value.firstChild:
+                word = value.firstChild.wholeText
+                html = '<a style=\"text-decoration:none;\" href=\"' + word + '\" >' + word + '</a><br>'
+                strs += html
+
+        return strs
+
+    def parser_soundmark(self, node):
+        strs    = ''
+        ukphone = self.get_node_text(node, 'ukphone')
+        usphone = self.get_node_text(node, 'usphone')
+        phone   = self.get_node_text(node, 'phone')
+
+        if ukphone: 
+            strs += ' 英[%s] ' % ukphone
+        if usphone: 
+            strs += ' 美[%s]' % usphone
+        if phone: 
+            strs += ' [%s]' % phone
+        return strs
 
 
-youdao = Youdao()
-class translate_comment(threading.Thread):
-    def __init__(self, word, view):
-        self.word = word
-        self.view = view
+class TranslateThread(threading.Thread):
+    def __init__(self, words, view):
+        self.view  = view
+        self.words = words
         threading.Thread.__init__(self)
 
     def run(self, edit):
-        trs_info = youdao.auto_translate(self.word)
+        youdao = Youdao()
+        result = youdao.auto_translate(self.words)
+        html   = \
+        '<span class="words">{words}</span>' \
+        '<span class="soundmark">{soundmark}</span><br><br>' \
+        '<span class="trans">{trans}</span><br>' \
+        '<span class="others">{others}</span>'.format(**result)
 
-        html = """<span class="keyword">{t.word}</span> <span class="string quoted">{t.phonetic}</span><br><br><span class="string quoted">{t.trans}</span><br><span class="string quoted">{t.web_trans}</span>""".format(t=trs_info)
-        self.view.show_popup(html, sublime.COOPERATE_WITH_AUTO_COMPLETE, -1, 600, 500, on_navigate=self.changeWord)
+        self.view.show_popup(html, sublime.COOPERATE_WITH_AUTO_COMPLETE, -1, 1000, 800, on_navigate=self.__replace_text)
 
-    def changeWord(self, word):
-        sels = self.view.sel()[0]
-        self.view.run_command("insert", {"characters": word})
+    def __replace_text(self, text):
+        self.view.run_command('insert', {'characters': text})
+
        
+class TranslatorCommand(sublime_plugin.TextCommand):
+    def run(self, edit):
+        region = self.view.sel()[0]
+        if region.begin() != region.end():
+            words  = self.view.substr(region)
+            thread = TranslateThread(words, self.view)
+            thread.run(edit)
