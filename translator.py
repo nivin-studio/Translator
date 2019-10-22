@@ -74,26 +74,26 @@ class Youdao(object):
         return nodes[0].firstChild.wholeText
 
     def parser_trans(self, node):
-        nodes = node.getElementsByTagName('simple-dict')
+        result = []
+        nodes  = node.getElementsByTagName('simple-dict')
         if not nodes:
-            strs = self.get_node_text(node, 'tran')
-            if not strs:
+            text = self.get_node_text(node, 'tran')
+            if not text:
                 return ''
-            return '<a style=\"text-decoration:none;\" href=\"' + strs + '\" >' + strs + '</a><br>'
+            result.append(text)
+            return result
 
         tr_nodes = nodes[0].getElementsByTagName('tr')
         if not tr_nodes:
             return ''
 
-        strs = ''
         for tr in tr_nodes:
             i_nodes = tr.getElementsByTagName('i')
             if i_nodes:
-                word = ''.join([i.firstChild.wholeText for i in i_nodes if i.firstChild])
-                html = '<a style=\"text-decoration:none;\" href=\"' + word + '\" >' + word + '</a><br>'
-                strs += html
+                text = ''.join([i.firstChild.wholeText for i in i_nodes if i.firstChild])
+                result.append(text)
 
-        return strs
+        return result
 
     def parser_others(self, node):
         nodes = node.getElementsByTagName('web-translation')
@@ -104,29 +104,28 @@ class Youdao(object):
         if not value_nodes:
             return ''
 
-        strs = ''
+        result = []
         for value in value_nodes:
             if value.firstChild:
-                word = value.firstChild.wholeText
-                html = '<a style=\"text-decoration:none;\" href=\"' + word + '\" >' + word + '</a><br>'
-                strs += html
+                text = value.firstChild.wholeText
+                result.append(text)
 
-        return strs
+        return result
 
     def parser_soundmark(self, node):
-        strs    = ''
+        result  = []
         ukphone = self.get_node_text(node, 'ukphone')
         usphone = self.get_node_text(node, 'usphone')
         phone   = self.get_node_text(node, 'phone')
 
-        if ukphone: 
-            strs += ' 英[%s] ' % ukphone
-        if usphone: 
-            strs += ' 美[%s]' % usphone
-        if phone: 
-            strs += ' [%s]' % phone
+        if ukphone:
+            result.append(' 英[%s] ' % ukphone)
+        if usphone:
+            result.append(' 美[%s] ' % usphone)
+        if phone:
+            result.append(' [%s] ' % phone)
         
-        return strs
+        return result
 
 
 class TranslateThread(threading.Thread):
@@ -136,14 +135,23 @@ class TranslateThread(threading.Thread):
 
         threading.Thread.__init__(self)
 
-    def run(self, edit):
+    def run(self):
         youdao = Youdao()
         result = youdao.auto_translate(self.words)
-        html   = \
-        '<span class="words">{words}</span>' \
-        '<span class="soundmark">{soundmark}</span><br><br>' \
-        '<span class="trans">{trans}</span><br>' \
-        '<span class="others">{others}</span>'.format(**result)
+        
+        self.show(result)
+
+    def show(self, data):
+        html = data['words']
+
+        if data['soundmark']:
+            html += ''.join(data['soundmark'])
+
+        if data['trans']:
+            html += '<br><br>' + '<br>'.join(['<a style=\"text-decoration:none;\" href=\"' + word + '\" >' + word + '</a>' for word in data['trans']])
+
+        if data['others']:
+            html += '<br><br>' + '<br>'.join(['<a style=\"text-decoration:none;\" href=\"' + word + '\" >' + word + '</a>' for word in data['others']])
 
         self.view.show_popup(html, sublime.COOPERATE_WITH_AUTO_COMPLETE, -1, 1000, 800, on_navigate=self.__replace_text)
 
@@ -158,4 +166,4 @@ class TranslatorCommand(sublime_plugin.TextCommand):
             words  = self.view.substr(region)
             thread = TranslateThread(words, self.view)
             
-            thread.run(edit)
+            thread.run()
