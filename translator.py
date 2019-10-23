@@ -131,7 +131,7 @@ class Youdao(object):
 class TranslateThread(threading.Thread):
     def __init__(self, words, view):
         self.view  = view
-        self.words = words
+        self.words = words.replace('\n', '<br>')
 
         threading.Thread.__init__(self)
 
