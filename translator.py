@@ -156,7 +156,8 @@ class TranslateThread(threading.Thread):
         self.view.show_popup(html, sublime.COOPERATE_WITH_AUTO_COMPLETE, -1, 1000, 800, on_navigate=self.__replace_text)
 
     def __replace_text(self, text):
-        self.view.run_command('insert', {'characters': text})
+        self.view.run_command('insert', {'characters': text.replace('<br>', '\n')})
+        self.view.hide_popup()
 
        
 class TranslatorCommand(sublime_plugin.TextCommand):
